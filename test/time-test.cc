@@ -10,16 +10,24 @@
 #define _CRT_SECURE_NO_WARNINGS
 #endif
 
-#include "gmock/gmock.h"
 #include "fmt/time.h"
+#include "gmock/gmock.h"
 
 TEST(TimeTest, Format) {
   std::tm tm = std::tm();
   tm.tm_year = 116;
-  tm.tm_mon  = 3;
+  tm.tm_mon = 3;
   tm.tm_mday = 25;
   EXPECT_EQ("The date is 2016-04-25.",
             fmt::format("The date is {:%Y-%m-%d}.", tm));
+}
+
+TEST(TimeTest, FormatSystemTime) {
+  fmt::SystemClock clock(std::chrono::microseconds(1522796769123456));
+  fmt::SystemTime time(clock);
+  EXPECT_EQ(
+      "The date is 2018-04-03-1234560-1-123456000-1-12-123.",
+      fmt::format("The date is {:%Y-%m-%d-%7f-%1f-%f-%1f-%2f-%3f}.", time));
 }
 
 TEST(TimeTest, GrowBuffer) {
@@ -31,19 +39,13 @@ TEST(TimeTest, GrowBuffer) {
   fmt::format(s, *std::localtime(&t));
 }
 
-TEST(TimeTest, EmptyResult) {
-  EXPECT_EQ("", fmt::format("{}", std::tm()));
-}
+TEST(TimeTest, EmptyResult) { EXPECT_EQ("", fmt::format("{}", std::tm())); }
 
 bool EqualTime(const std::tm &lhs, const std::tm &rhs) {
-  return lhs.tm_sec == rhs.tm_sec &&
-         lhs.tm_min == rhs.tm_min &&
-         lhs.tm_hour == rhs.tm_hour &&
-         lhs.tm_mday == rhs.tm_mday &&
-         lhs.tm_mon == rhs.tm_mon &&
-         lhs.tm_year == rhs.tm_year &&
-         lhs.tm_wday == rhs.tm_wday &&
-         lhs.tm_yday == rhs.tm_yday &&
+  return lhs.tm_sec == rhs.tm_sec && lhs.tm_min == rhs.tm_min &&
+         lhs.tm_hour == rhs.tm_hour && lhs.tm_mday == rhs.tm_mday &&
+         lhs.tm_mon == rhs.tm_mon && lhs.tm_year == rhs.tm_year &&
+         lhs.tm_wday == rhs.tm_wday && lhs.tm_yday == rhs.tm_yday &&
          lhs.tm_isdst == rhs.tm_isdst;
 }
 

@@ -12,6 +12,7 @@
 
 #include "format.h"
 #include <ctime>
+#include <chrono>
 
 #ifdef _MSC_VER
 # pragma warning(push)
@@ -133,6 +134,75 @@ inline std::tm gmtime(std::time_t time) {
   // Too big time values may be unsupported.
   FMT_THROW(fmt::FormatError("time_t value out of range"));
   return std::tm();
+}
+
+enum class SystemTimeFlag { GMT, LOCAL };
+
+typedef std::chrono::time_point<std::chrono::system_clock> SystemClock;
+struct SystemTime {
+  SystemTime(const SystemClock& system_clock, const SystemTimeFlag flag = SystemTimeFlag::GMT)
+    : subs_(FormatInt(
+        std::chrono::duration_cast<std::chrono::nanoseconds>
+          (system_clock.time_since_epoch()).count()).c_str()),
+      tm_(flag == SystemTimeFlag::GMT
+        ? gmtime(std::chrono::system_clock::to_time_t(system_clock))
+        : localtime(std::chrono::system_clock::to_time_t(system_clock)))
+    {}
+
+  const std::tm tm_;
+  const char* subs_;
+};
+
+template <typename ArgFormatter>
+void format_arg(BasicFormatter<char, ArgFormatter> &f,
+                const char *&format_str, const SystemTime &system_time) {
+  internal::MemoryBuffer<char, internal::INLINE_BUFFER_SIZE> format;
+  if (*format_str == ':')
+    ++format_str;
+  const char *end = format_str;
+  const char *sub = system_time.subs_ + 10;
+  while (*end && *end != '}') {
+    if (*end == '%') {
+      const auto& spec = end + 1;
+      if (*spec == 'f') {
+        format.append(sub, sub + 9);
+        ++end;
+      } else if (std::isdigit(*spec) && *spec != '0' && *(spec + 1) == 'f') {
+        format.append(sub, sub + (*spec - '0'));
+        end += 2;
+      }
+      else {
+        format.push_back(*end);
+      }
+    } else {
+      format.push_back(*end);
+    }
+    ++end;
+  }
+  if (*end != '}')
+    FMT_THROW(FormatError("missing '}' in format string"));
+
+  format.push_back('\0');
+  Buffer<char> &buffer = f.writer().buffer();
+  std::size_t start = buffer.size();
+  for (;;) {
+    std::size_t size = buffer.capacity() - start;
+    std::size_t count = std::strftime(&buffer[start], size, &format[0], &system_time.tm_);
+    if (count != 0) {
+      buffer.resize(start + count);
+      break;
+    }
+    if (size >= format.size() * 256) {
+      // If the buffer is 256 times larger than the format string, assume
+      // that `strftime` gives an empty result. There doesn't seem to be a
+      // better way to distinguish the two cases:
+      // https://github.com/fmtlib/fmt/issues/367
+      break;
+    }
+    const std::size_t MIN_GROWTH = 10;
+    buffer.reserve(buffer.capacity() + (size > MIN_GROWTH ? size : MIN_GROWTH));
+  }
+  format_str = end + 1;
 }
 } //namespace fmt
 
